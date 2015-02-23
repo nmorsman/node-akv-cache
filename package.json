@@ -1,0 +1,19 @@
+{
+  "name": "akv-cache",
+  "description": "Asynchronous key-value cache",
+  "author": "nmorsman",
+  "version": "0.1.0",
+  "main": "cache.js",
+  "homepage": "https://github.com/nmorsman/node-akv-cache",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/nmorsman/node-akv-cache.git"
+  },
+  "keywords": [
+    "async",
+    "cache"
+  ],
+  "bugs": {
+    "url": "https://github.com/nmorsman/node-akv-cache/issues"
+  }
+}
