@@ -1,6 +1,8 @@
 function Cache(opts) {
     this._ttl = (opts && (typeof opts.ttl !== 'undefined')) ? opts.ttl : 0;
     this._missFn = (opts && opts.miss) ? opts.miss : null;
+    this._lastGc = (new Date()).getTime();
+    this._gcInterval = 60;
     this._data = {};
 }
 
@@ -8,7 +10,7 @@ function Cache(opts) {
 Cache.prototype.get = function(key, callback) {
     var self = this;
 
-    if (self._data[key] && !self._data[key].working)
+    if (self.has(key))
         return callback(null, self._data[key].value);
 
     if (!self._missFn)
@@ -18,23 +20,22 @@ Cache.prototype.get = function(key, callback) {
         self._data[key] = {
             value: null,
             working: false,
-            timer: null,
+            expires: null,
             callbacks: []
         };
     }
 
     self._data[key].callbacks.push(callback);
+    if (self._data[key].working) return;
 
-    if (!self._data[key].working) {
-        self._data[key].working = true;
-        
-        self._missFn(key, function(err, value, ttl) {
-            if (typeof ttl === 'undefined')
-                ttl = self._ttl;
+    self._data[key].working = true;
 
-            self.__set(err, key, value, ttl);
-        });
-    }
+    self._missFn(key, function(err, value, ttl) {
+        if (typeof ttl === 'undefined')
+            ttl = self._ttl;
+
+        self.__set(err, key, value, ttl);
+    });
 };
 
 Cache.prototype.set = function(key, value, ttl) {
@@ -46,13 +47,23 @@ Cache.prototype.set = function(key, value, ttl) {
 };
 
 Cache.prototype.has = function(key) {
-    if (this._data[key] && !this._data[key].working)
-        return true;
-    return false;
+    if (!this._data[key] || this._data[key].working)
+        return false;
+
+    return (this._data[key].expires > (new Date()).getTime());
 };
 
 Cache.prototype.size = function() {
-    return Object.keys(this._data).length;
+    var now = new Date();
+    var size = 0;
+
+    for (var i in this._data) {
+        if (!this._data[i].working && (this._data[i].expires > now)) {
+            size++;
+        }
+    }
+
+    return size;
 };
 
 Cache.prototype.__set = function(err, key, value, ttl) {
@@ -75,11 +86,27 @@ Cache.prototype.__set = function(err, key, value, ttl) {
     self._data[key] = {
         value: value,
         working: false,
-        timer: setTimeout(function() {
-            delete self._data[key];
-        }, (ttl * 1000)),
+        expires: ((new Date()).getTime() + (ttl * 1000)),
         callbacks: []
     };
+
+    self.__gc();
+};
+
+Cache.prototype.__gc = function() {
+    var self = this;
+    var now = (new Date()).getTime();
+    var nextgc = (self._lastGc + (self._gcInterval * 1000));
+
+    if (now < nextgc)
+        return;
+
+    Object.keys(self._data).forEach(function(key) {
+        if (self._data[key].expires > now) return;
+        delete self._data[key];
+    });
+
+    self._lastGc = now;
 };
 
 module.exports = function(opts) {
