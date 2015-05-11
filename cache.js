@@ -102,6 +102,7 @@ Cache.prototype.__gc = function() {
         return;
 
     Object.keys(self._data).forEach(function(key) {
+        if (self._data[key].working) return;
         if (self._data[key].expires > now) return;
         delete self._data[key];
     });
