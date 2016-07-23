@@ -57,3 +57,8 @@ var keyExists = cache.has('some-key');
 ```js
 var cacheSize = cache.size();
 ```
+
+
+### License
+
+[MIT](LICENSE)
