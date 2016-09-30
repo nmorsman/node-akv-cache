@@ -168,7 +168,9 @@ Cache.prototype.get = function(key, callback) {
     if (self.has(key)) {
         graceful = true;
 
-        callback(null, self.cache[key].value);
+        if (typeof callback === 'function') {
+            callback(null, self.cache[key].value);
+        }
     }
     else {
         if (typeof callback === 'function') {
