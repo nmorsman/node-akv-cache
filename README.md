@@ -26,6 +26,12 @@ var cache = require('akv-cache')({
     grace: 60,
 
     /*
+     * Default value when cache is empty
+     * Default: undefined
+     */
+    emptyValue: undefined,
+
+    /*
      * Function for retrieval of fresh data
      * Default: function(key, callback) { callback(null); }
      */

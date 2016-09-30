@@ -6,6 +6,7 @@ function Cache(opts) {
         ttl: (opts && (typeof opts.ttl !== 'undefined')) ? opts.ttl : 0,
         grace: (opts && (typeof opts.grace !== 'undefined')) ? opts.grace : 0,
         miss: (opts && (typeof opts.miss === 'function')) ? opts.miss : function(key, callback) { callback(null); },
+        emptyValue: (opts && (typeof opts.emptyValue !== 'undefined')) ? opts.emptyValue : undefined,
         gcInterval: (opts && (typeof opts.gcInterval !== 'undefined')) ? opts.gcInterval : 60
     };
 }
@@ -156,7 +157,7 @@ Cache.prototype.get = function(key, callback) {
     /* Create cache object if missing */
     if (!self.cache[key]) {
         self.cache[key] = {
-            value: undefined,
+            value: self.opts.emptyValue,
             defined: false,
             working: false,
             expires: null,
@@ -192,7 +193,7 @@ Cache.prototype.get = function(key, callback) {
     }
 
     /* Return */
-    return graceful ? self.cache[key].value : undefined;
+    return graceful ? self.cache[key].value : self.opts.emptyValue;
 };
 
 
