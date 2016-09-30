@@ -1,114 +1,202 @@
 function Cache(opts) {
-    this._ttl = (opts && (typeof opts.ttl !== 'undefined')) ? opts.ttl : 0;
-    this._missFn = (opts && opts.miss) ? opts.miss : null;
-    this._lastGc = (new Date()).getTime();
-    this._gcInterval = 60;
-    this._data = {};
+    this.cache = {};
+    this.lastGcTime = (new Date()).getTime();
+
+    this.opts = {
+        ttl: (opts && (typeof opts.ttl !== 'undefined')) ? opts.ttl : 0,
+        grace: (opts && (typeof opts.grace !== 'undefined')) ? opts.grace : 0,
+        miss: (opts && (typeof opts.miss === 'function')) ? opts.miss : function(key, callback) { callback(null); },
+        gcInterval: (opts && (typeof opts.gcInterval !== 'undefined')) ? opts.gcInterval : 60
+    };
 }
 
 
-Cache.prototype.get = function(key, callback) {
+/*
+ * Internal garbage collector
+ */
+
+Cache.prototype.__gc = function() {
+    var self = this;
+    var now = (new Date()).getTime();
+    var nextGc = (self.lastGcTime + (self.opts.gcInterval * 1000));
+
+    /* Interval */
+    if (now < nextGc) {
+        return;
+    }
+
+    Object.keys(self.cache).forEach(function(key) {
+        /* A working object is not garbage */
+        if (self.cache[key].working) {
+            return;
+        }
+
+        /* An object within expiration/grace is not garbage */
+        if ((self.cache[key].expires + (self.opts.grace * 1000)) > now) {
+            return;
+        }
+
+        /* The rest is garbage */
+        delete self.cache[key];
+    });
+
+    self.lastGcTime = now;
+};
+
+
+/*
+ * Cache key existence
+ */
+
+Cache.prototype.has = function(key) {
+    if (this.cache[key] && this.cache[key].defined) {
+        var now = (new Date()).getTime();
+
+        if ((this.cache[key].expires + (this.opts.grace * 1000)) > now) {
+            return true;
+        }
+    }
+
+    return false;
+};
+
+
+/*
+ * Cache size
+ */
+
+Cache.prototype.size = function() {
+    var self = this;
+    var size = 0;
+
+    Object.keys(self.cache).forEach(function(key) {
+        if (self.has(key)) {
+            size++;
+        }
+    });
+
+    return size;
+};
+
+
+/*
+ * Internal setter
+ */
+
+Cache.prototype.__set = function(err, key, value, ttl) {
     var self = this;
 
-    if (self.has(key))
-        return callback(null, self._data[key].value);
+    /* Return errors if something went wrong */
+    if (err) {
+        if (self.cache[key]) {
+            while (self.cache[key].callbacks.length) {
+                self.cache[key].callbacks.pop()(err);
+            }
 
-    if (!self._missFn)
-        return callback('Cache miss: ' + key);
+            delete self.cache[key];
+        }
 
-    if (!self._data[key]) {
-        self._data[key] = {
-            value: null,
+        return;
+    }
+
+    /* Run through callbacks and return value */
+    if (self.cache[key]) {
+        while (self.cache[key].callbacks.length) {
+            self.cache[key].callbacks.pop()(null, value);
+        }
+    }
+
+    /* Update cache object */
+    self.cache[key] = {
+        value: value,
+        defined: true,
+        working: false,
+        expires: ((new Date()).getTime() + (ttl * 1000)),
+        callbacks: []
+    };
+
+    /* Collect garbage */
+    self.__gc();
+};
+
+
+/*
+ * Setter
+ */
+
+Cache.prototype.set = function(key, value, ttl) {
+    if (typeof ttl === 'undefined') {
+        ttl = this.opts.ttl;
+    }
+
+    this.__set(null, key, value, ttl);
+    return this;
+};
+
+
+/*
+ * Getter
+ */
+
+Cache.prototype.get = function(key, callback) {
+    var self = this;
+    var graceful = false;
+
+    /* Cache hit */
+    if (self.cache[key] && self.cache[key].defined) {
+        if (this.cache[key].expires > (new Date()).getTime()) {
+            if (typeof callback === 'function') {
+                callback(null, self.cache[key].value);
+            }
+
+            return self.cache[key].value;
+        }
+    }
+
+    /* Create cache object if missing */
+    if (!self.cache[key]) {
+        self.cache[key] = {
+            value: undefined,
+            defined: false,
             working: false,
             expires: null,
             callbacks: []
         };
     }
 
-    self._data[key].callbacks.push(callback);
-    if (self._data[key].working) return;
+    /* Callback if object is graceful, if not append callback to queue */
+    if (self.has(key)) {
+        graceful = true;
 
-    self._data[key].working = true;
-
-    self._missFn(key, function(err, value, ttl) {
-        if (typeof ttl === 'undefined')
-            ttl = self._ttl;
-
-        self.__set(err, key, value, ttl);
-    });
-};
-
-Cache.prototype.set = function(key, value, ttl) {
-    if (typeof ttl === 'undefined')
-        ttl = this._ttl;
-
-    this.__set(null, key, value, ttl);
-    return this;
-};
-
-Cache.prototype.has = function(key) {
-    if (!this._data[key] || this._data[key].working)
-        return false;
-
-    return (this._data[key].expires > (new Date()).getTime());
-};
-
-Cache.prototype.size = function() {
-    var now = new Date();
-    var size = 0;
-
-    for (var i in this._data) {
-        if (!this._data[i].working && (this._data[i].expires > now)) {
-            size++;
+        callback(null, self.cache[key].value);
+    }
+    else {
+        if (typeof callback === 'function') {
+            self.cache[key].callbacks.push(callback);
         }
     }
 
-    return size;
-};
+    /* Generate new cache value if no work is being done */
+    if (!self.cache[key].working) {
+        self.cache[key].working = true;
 
-Cache.prototype.__set = function(err, key, value, ttl) {
-    var self = this;
+        self.opts.miss(key, function(err, value, ttl) {
+            if (typeof ttl === 'undefined') {
+                ttl = self.opts.ttl;
+            }
 
-    if (err) {
-        if (self._data[key]) {
-            while (self._data[key].callbacks.length)
-                self._data[key].callbacks.pop()(err);
-            delete self._data[key];
-        }
-        return;
+            self.__set(err, key, value, ttl);
+        });
     }
 
-    if (self._data[key]) {
-        while (self._data[key].callbacks.length)
-            self._data[key].callbacks.pop()(null, value);
-    }
-
-    self._data[key] = {
-        value: value,
-        working: false,
-        expires: ((new Date()).getTime() + (ttl * 1000)),
-        callbacks: []
-    };
-
-    self.__gc();
+    /* Return */
+    return graceful ? self.cache[key].value : undefined;
 };
 
-Cache.prototype.__gc = function() {
-    var self = this;
-    var now = (new Date()).getTime();
-    var nextgc = (self._lastGc + (self._gcInterval * 1000));
 
-    if (now < nextgc)
-        return;
-
-    Object.keys(self._data).forEach(function(key) {
-        if (self._data[key].working) return;
-        if (self._data[key].expires > now) return;
-        delete self._data[key];
-    });
-
-    self._lastGc = now;
-};
+/*
+ * Exports
+ */
 
 module.exports = function(opts) {
     return new Cache(opts);
