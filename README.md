@@ -49,7 +49,7 @@ var cache = require('akv-cache')({
 ```
 
 
-#### get(key, [callback]): mixed
+#### get(key, [scope], [callback]): mixed
 
 ```js
 /*
@@ -69,6 +69,13 @@ cache.get('some-key', function(err, value) {
  */
 
 var value = cache.get('some-key');
+
+
+/*
+ * Provide additional data to the miss-function by overriding the default function scope.
+ */
+
+cache.get('key', { data: 123 }, function(err, value) { });
 ```
 
 

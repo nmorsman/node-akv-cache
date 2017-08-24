@@ -139,9 +139,14 @@ Cache.prototype.set = function(key, value, ttl) {
  * Getter
  */
 
-Cache.prototype.get = function(key, callback) {
+Cache.prototype.get = function(key, scope, callback) {
     var self = this;
     var graceful = false;
+
+    if ((typeof callback === 'undefined') && (typeof scope === 'function')) {
+        callback = scope;
+        scope = null;
+    }
 
     /* Cache hit */
     if (self.cache[key] && self.cache[key].defined) {
@@ -183,7 +188,9 @@ Cache.prototype.get = function(key, callback) {
     if (!self.cache[key].working) {
         self.cache[key].working = true;
 
-        self.opts.miss(key, function(err, value, ttl) {
+        var missFnScope = scope || self.opts;
+
+        self.opts.miss.call(missFnScope, key, function(err, value, ttl) {
             if (typeof ttl === 'undefined') {
                 ttl = self.opts.ttl;
             }
