@@ -4,12 +4,16 @@ akv-cache
 Asynchronous in-memory key-value cache.
 
 
-### Installation
+
+Installation
+------------
 
 `npm install akv-cache`
 
 
-### Usage
+
+Usage
+-----
 
 ```js
 var cache = require('akv-cache')({
@@ -93,6 +97,8 @@ var cacheSize = cache.size();
 ```
 
 
-### License
+
+License
+-------
 
 [MIT](LICENSE)
